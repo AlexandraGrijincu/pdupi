@@ -32,6 +32,8 @@ namespace Gym.Models
 
         // 🌟 Câmpurile noi pentru managementul dinamic al abonamentelor direct pe User
         public string? SubscriptionType { get; set; }
+        public DateTime? SubscriptionExpiryDate { get; set; }
+
         public int? SessionsLeftThisWeek { get; set; }
 
         [JsonIgnore]

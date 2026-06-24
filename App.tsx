@@ -61,10 +61,10 @@ const sportImagesMapping: { [key: string]: any } = {
 };
 
 const subscriptionTypesOptions = [
-  { id: 1, name: 'Glow Bronze 🌸', price: '120 RON', desc: '1 zi pe săptămână (4 Sesiuni/Lună)' },
-  { id: 2, name: 'Glow Silver 💖', price: '180 RON', desc: '2 zile pe săptămână (8 Sesiuni/Lună)' },
-  { id: 3, name: 'Glow Gold ✨', price: '240 RON', desc: '3 zile pe săptămână (12 Sesiuni/Lună)' },
-  { id: 4, name: 'Glow Diamond Unlimited 👑', price: '350 RON', desc: 'Nelimitat într-o lună întreagă' },
+  { id: 1, name: 'Glow Bronze 🌸', price: '130 RON', desc: '1 day per week (4 Sessions/Month)' },
+  { id: 2, name: 'Glow Silver 💖', price: '240 RON', desc: '2 days per week (8 Sessions/Month)' },
+  { id: 3, name: 'Glow Gold ✨', price: '300 RON', desc: '3 days per week (12 Sessions/Month)' },
+  { id: 4, name: 'Glow Diamond Unlimited 👑', price: '350 RON', desc: 'Unlimited for a full month' },
 ];
 
 const getSportImageByTitle = (sportName: string, classId: number) => {
@@ -209,23 +209,24 @@ export default function App() {
           ...data.value[0],
           Token: data.Token || data.value[0].Token,
           SubscriptionType: data.value[0].SubscriptionType || null,
-          SessionsLeftThisWeek: data.value[0].SessionsLeftThisWeek ?? null
+          SessionsLeftThisWeek: data.value[0].SessionsLeftThisWeek ?? null,
+          SubscriptionExpiryDate: data.value[0].ExpiryDate
         };
         setCurrentUser(loggedUser);
         setIsLoggedIn(true);
         setActiveTab('home');
-      } else { Alert.alert("Glow Info 🎀", "Invalid email or password. ✨"); }
-    } catch (e: any) { Alert.alert("Network Info 🎀", "Server offline. ✨"); }
+      } else { Alert.alert("Glow Info✨ ", "Invalid email or password."); }
+    } catch (e: any) { Alert.alert("Network Info ✨", "Server offline."); }
   };
 
   const handleRequestRegister = async () => {
     setStaffError('');
-    if (!email || !password || !fullName) { Alert.alert("Glow Info 🌸", "Fill in all fields! 💕"); return; }
-    if (!isValidEmail(email)) { Alert.alert("Glow Info 🌸", "Enter a valid address! ✨"); return; }
+    if (!email || !password || !fullName) { Alert.alert("Glow Info 🌸", "Fill in all fields!"); return; }
+    if (!isValidEmail(email)) { Alert.alert("Glow Info 🌸", "Enter a valid address!"); return; }
     if (inviteCode.trim() !== "" && inviteCode.trim() !== "GLOW_STAFF_2026") { setStaffError("The code is incorrect! 🌸"); return; }
     try {
       const response = await fetch(API_URLS.REQUEST_REGISTER, { method: 'POST', headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ Email: email.trim() }) });
-      if (response.ok) { Alert.alert("Verify Email 🌸", "We sent a code! 💕", [{ text: "Enter Code 🔑", onPress: () => setCurrentView('confirmRegister') }]); }
+      if (response.ok) { Alert.alert("Verify Email 🌸", "We sent a code!", [{ text: "Enter Code 🔑", onPress: () => setCurrentView('confirmRegister') }]); }
     } catch (e: any) { console.log(e); }
   };
 
@@ -234,8 +235,8 @@ export default function App() {
     let assignedRole = inviteCode.trim() === "GLOW_STAFF_2026" ? 1 : 0;
     try {
       const response = await fetch(API_URLS.REGISTER, { method: 'POST', headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ FullName: fullName.trim(), Email: email.trim().toLowerCase(), Password: password, Role: assignedRole, Code: registerVerifyCode.trim() }) });
-      if (response.ok) { Alert.alert("Welcome! 🌸", "Account ready! ✨"); navigateToView('login'); }
-    } catch (e: any) { Alert.alert("Glow Info 🎀", "Registration failed. 💕"); }
+      if (response.ok) { Alert.alert("Welcome! 🌸", "Account ready!"); navigateToView('login'); }
+    } catch (e: any) { Alert.alert("Glow Info 🎀", "Registration failed."); }
   };
 
   const handleForgotPassword = async () => {
@@ -257,48 +258,39 @@ export default function App() {
   const handleBookPlace = async (classId: number) => {
     const userId = currentUser?.Id || currentUser?.id;
 
-    // 1. DACA ESTI ANTRENOR (Role 1), doar deschizi/închizi lista de participanți
+    // 1. Verificăm dacă e antrenor
     if (currentUser?.Role === 1) {
       setExpandedClassId(expandedClassId === classId ? null : classId);
       return;
     }
 
-    // 2. Logica pentru MEMBRI (Role 0)
-    const dejaInscris = allBookings.some(
-        (b: any) => (b.GymClassId === classId || b.gymClassId === classId) &&
-            (b.MemberId === userId || b.memberId === userId || b.MemberName?.toLowerCase().trim() === currentUser.FullName?.toLowerCase().trim() || b.memberName?.toLowerCase().trim() === currentUser.FullName?.toLowerCase().trim())
+    // 2. Verificăm dacă e deja înscris
+    const dejaInscris = allBookings.some((b: any) =>
+        (b.GymClassId === classId || b.gymClassId === classId) &&
+        (b.MemberId === userId || b.memberId === userId)
     );
 
     if (dejaInscris) {
-      Alert.alert("Loc Deja Rezervat! 💕", "Ești deja înscris la acest antrenament. GlowGym te așteaptă în sală! 🌸✨");
+      Alert.alert("Place Already Booked! 💕", "You are already enrolled in this workout.");
       return;
     }
 
-    const areAbonamentValid = currentUser.SubscriptionType && currentUser.SubscriptionType.trim() !== "";
-    const areCrediteDisponibile = currentUser.SessionsLeftThisWeek !== null && currentUser.SessionsLeftThisWeek > 0;
+    // 3. LOGICA NOUĂ: Verificăm dacă are abonament SAU credite
+    const areAbonamentActiv = currentUser.SubscriptionType && currentUser.SubscriptionType.trim() !== "";
+    const areCredite = currentUser.SessionsLeftThisWeek !== null && currentUser.SessionsLeftThisWeek > 0;
 
-    if (!areAbonamentValid || !areCrediteDisponibile) {
+    // Dacă NU are abonament SAU NU are credite, trimitem la plată
+    if (!areAbonamentActiv || !areCredite) {
       Alert.alert(
-          "💳 Rezervare / Plată Ședință",
-          !areAbonamentValid
-              ? "Nu deții un abonament activ. Dorești să plătești separat o taxă unică de 35 RON pentru această ședință? ✨"
-              : "Abonamentul tău a expirat sau creditele săptămânale s-au terminat! Dorești să plătești separat 35 RON? 💕",
+          "💳 Booking / Session Payment",
+          "You are out of credits or do not have an active subscription. Would you like to pay 35 RON for this session? ✨",
           [
-            { text: "Anulează", style: "cancel" },
+            { text: "Cancel", style: "cancel" },
             {
-              text: "Plătește 35 RON 💳",
+              text: "Pay 35 RON 💳",
               onPress: async () => {
-                try {
-                  await fetch(API_URLS.PAY_PER_CLASS, {
-                    method: 'POST',
-                    headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'Authorization': `Bearer ${currentUser?.Token}` },
-                    body: JSON.stringify({ UserId: userId, ClassId: classId, userId: userId, classId: classId })
-                  });
-                  await executeBookingRequest(classId, userId);
-                } catch(e: any) {
-                  // Dacă plata eșuează din erori de rețea dar API-ul poate a procesat, încercăm rezervarea
-                  await executeBookingRequest(classId, userId);
-                }
+                // Aici se face plata și, dacă reușește, se face rezervarea
+                await proceseazaPlataSiRezervare(classId, userId);
               }
             }
           ]
@@ -306,85 +298,101 @@ export default function App() {
       return;
     }
 
+    // Dacă are totul, rezervă direct
     await executeBookingRequest(classId, userId);
   };
 
+  const proceseazaPlataSiRezervare = async (classId: number, userId: number) => {
+    try {
+      // 1. Apelăm API-ul de plată
+      const payResponse = await fetch(API_URLS.PAY_PER_CLASS, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentUser?.Token}`
+        },
+        body: JSON.stringify({ UserId: userId, ClassId: classId })
+      });
+
+      // 2. Dacă plata a reușit, trimitem rezervarea cu flag-ul "IsPaidSeparately"
+      if (payResponse.ok) {
+        const response = await fetch(API_URLS.BOOK_PLACE, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentUser?.Token}`
+          },
+          body: JSON.stringify({
+            ClassId: classId,
+            MemberId: userId,
+            IsPaidSeparately: true // 🌟 Flag-ul care sare peste verificarea creditelor în backend
+          })
+        });
+
+        if (response.ok) {
+          await loadDashboardData();
+          Alert.alert("Success 🌸", "Payment processed and spot booked! ✨");
+        } else {
+          const errorData = await response.json();
+          Alert.alert("Booking Error 🌸", errorData.error || "Payment succeeded, but booking failed.");
+        }
+      } else {
+        Alert.alert("Payment Error 💳", "Payment was not processed. Please try again.");
+      }
+    } catch (e) {
+      Alert.alert("Error 🌐", "Could not connect to the server.");
+    }
+  };
   const executeBookingRequest = async (classId: number, userId: number) => {
     try {
       const response = await fetch(API_URLS.BOOK_PLACE, {
         method: 'POST',
-        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'Authorization': `Bearer ${currentUser?.Token}` },
-        body: JSON.stringify({ ClassId: classId, MemberId: userId, classId: classId, memberId: userId })
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentUser?.Token}`
+        },
+        body: JSON.stringify({ ClassId: classId, MemberId: userId })
       });
 
+      // Parsăm răspunsul o singură dată
+      const data = await response.json();
+
       if (response.ok) {
-        let updatedSessionsLeft = currentUser.SessionsLeftThisWeek;
-        let updatedSubName = currentUser.SubscriptionType;
+        // 1. Actualizăm starea utilizatorului folosind 'prev: any' pentru a evita TS7006
+        setCurrentUser((prev: any) => ({
+          ...prev,
+          SessionsLeftThisWeek: data.remainingSessions,
+          // Resetăm abonamentul în UI dacă sesiunile au ajuns la 0
+          SubscriptionType: data.remainingSessions <= 0 ? null : prev.SubscriptionType
+        }));
 
-        if (currentUser.SessionsLeftThisWeek !== null && currentUser.SessionsLeftThisWeek < 1000) {
-          updatedSessionsLeft = currentUser.SessionsLeftThisWeek - 1;
-          if (updatedSessionsLeft < 0) updatedSessionsLeft = 0;
-        }
-
-        if (updatedSessionsLeft === 0 && currentUser.SessionsLeftThisWeek !== null) {
-          updatedSubName = null;
-        }
-
-        setCurrentUser({ ...currentUser, SessionsLeftThisWeek: updatedSessionsLeft, SubscriptionType: updatedSubName });
-
-        const updatePayload = {
-          UserId: userId, userId: userId,
-          Id: userId, id: userId,
-          NewCredits: updatedSessionsLeft, newCredits: updatedSessionsLeft,
-          SessionsLeftThisWeek: updatedSessionsLeft, sessionsLeftThisWeek: updatedSessionsLeft,
-          SubscriptionType: updatedSubName, subscriptionType: updatedSubName
-        };
-
-        if (updatedSessionsLeft === 0 && currentUser.SessionsLeftThisWeek !== null) {
-          await fetch(`${API_URLS.BUY_SUBSCRIPTION}`, {
-            method: 'POST',
-            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'Authorization': `Bearer ${currentUser?.Token}` },
-            body: JSON.stringify({ UserId: userId, SubscriptionTypeId: 0, userId: userId, subscriptionTypeId: 0 })
-          });
-
-          await fetch(`http://10.0.1.59:5218/api/Users/UpdateCredits`, {
-            method: 'PUT',
-            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'Authorization': `Bearer ${currentUser?.Token}` },
-            body: JSON.stringify(updatePayload)
-          });
-
-        } else if (currentUser.SessionsLeftThisWeek !== null && currentUser.SessionsLeftThisWeek < 1000) {
-          await fetch(`http://10.0.1.59:5218/api/Users/UpdateCredits`, {
-            method: 'PUT',
-            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'Authorization': `Bearer ${currentUser?.Token}` },
-            body: JSON.stringify(updatePayload)
-          });
-        }
-
+        // 2. Reîncărcăm datele pentru a sincroniza interfața cu baza de date
         await loadDashboardData();
-        Alert.alert("Glow Success! ✨", "Loc rezervat cu succes! 🌸");
+
+        Alert.alert("Glow Success! ✨", "Spot successfully booked! 🌸");
+      } else {
+        // Afișăm eroarea primită direct din backend (ex: "Nu mai ai credite")
+        Alert.alert("Error 🌸", data.error || "Could not complete the booking.");
       }
-    } catch (error: any) { console.log(error); }
+    } catch (error: any) {
+      console.log("Booking execution error:", error);
+      Alert.alert("Error", "A network issue occurred. ✨");
+    }
   };
-
   const getZileRamase = () => {
-    // 1. Verificăm dacă currentUser există și are ExpiryDate
-    if (!currentUser || !currentUser.ExpiryDate) return "N/A";
+    if (!currentUser || !currentUser.SubscriptionExpiryDate) return "N/A";
 
-    const dataExpirare = new Date(currentUser.ExpiryDate);
+    const dataExpirare = new Date(currentUser.SubscriptionExpiryDate);
     const dataAzi = new Date();
 
-    // Calculăm diferența în milisecunde
+    // Calculăm diferența
     const diferentaInMs = dataExpirare.getTime() - dataAzi.getTime();
     const zile = Math.ceil(diferentaInMs / (1000 * 60 * 60 * 24));
 
-    // AICI E TRUCUL: Dacă 'zile' este greșit, înseamnă că dataExpirare e greșită.
-    // Hai să vedem ce valoare are în consolă:
-    console.log("DEBUG - ExpiryDate primit:", currentUser.ExpiryDate);
-    console.log("DEBUG - Data calculată (Date):", dataExpirare);
-    console.log("DEBUG - Zile calculate:", zile);
-
-    return zile > 0 ? `${zile} zile rămase` : "Expirat";
+    return zile > 0 ? `${zile} days remaining` : "Expired";
   };
 
   const handleBuySubscriptionRequest = async (subOption: any) => {
@@ -399,15 +407,12 @@ export default function App() {
 
       if (response.ok) {
         const data = await response.json();
-        console.log("Date primite de la server:", data);
-        Alert.alert("Succes 💳", `Abonamentul ${subOption.name} a fost activat! 💕`);
-
-        // Actualizezi utilizatorul cu datele primite de la server
+        Alert.alert("Success 💳", "Subscription activated!");
         setCurrentUser({
           ...currentUser,
           SubscriptionType: subOption.name,
           SessionsLeftThisWeek: calculateSessions,
-          ExpiryDate: data.expiryDate // <--- Data primită din noul cod de controller
+          SubscriptionExpiryDate: data.expiryDate // 🌟 Data vine direct de la server
         });
       }
     } catch (e: any) { console.log(e); }
@@ -464,17 +469,6 @@ export default function App() {
     } catch (error: any) { console.log(error); }
   };
 
-  const handleSimulateQrScan = async () => {
-    if (!qrSimulatedToken) return;
-    try {
-      const response = await fetch(`http://10.0.1.59:5218/api/Users/ScanQR`, {
-        method: 'POST',
-        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'Authorization': `Bearer ${currentUser?.Token}` },
-        body: JSON.stringify({ QRToken: qrSimulatedToken.trim(), qrToken: qrSimulatedToken.trim() })
-      });
-      if (response.ok) { Alert.alert("Access Allowed! ✨", "Member valid! 🌸"); setQrSimulatedToken(''); }
-    } catch (e: any) { console.log(e); }
-  };
 
   const handleLogout = () => {
     setIsLoggedIn(false);
@@ -575,7 +569,7 @@ export default function App() {
 
                     const areAbonamentText = currentUser.SubscriptionType && currentUser.SubscriptionType.trim() !== "";
                     const areCrediteText = currentUser.SessionsLeftThisWeek !== null && currentUser.SessionsLeftThisWeek > 0;
-                    const butonLabel = currentUser.Role === 0 ? ((!areAbonamentText || !areCrediteText) ? 'Pay 35 RON' : 'Book Place') : `👥 Participanți: ${totalCount} ${isRosterVisible ? '🔼' : '🔽'}`;
+                    const butonLabel = currentUser.Role === 0 ? ((!areAbonamentText || !areCrediteText) ? 'Pay 35 RON' : 'Book Place') : ` Participanți: ${totalCount} ${isRosterVisible ? '🔼' : '🔽'}`;
 
                     return (
                         <View key={item.Id} style={{marginBottom: 16}}>
@@ -610,10 +604,10 @@ export default function App() {
                               <View style={styles.trainerRosterCard}>
                                 {isMyClass ? (
                                     <>
-                                      <Text style={styles.rosterTitle}>✨ Listă Participanți Înscriși
+                                      <Text style={styles.rosterTitle}>✨ Enrolled Participants List
                                         ({totalCount}):</Text>
                                       {totalCount === 0 ? (
-                                          <Text style={styles.rosterEmptyText}>Nu s-a înscris niciun participant încă.
+                                          <Text style={styles.rosterEmptyText}>No participants enrolled yet.
                                             💕</Text>
                                       ) : (
                                           attendingMembers.map((name: string, idx: number) => (
@@ -623,7 +617,7 @@ export default function App() {
                                     </>
                                 ) : (
                                     <Text style={[styles.rosterEmptyText, {color: '#FF1493', fontWeight: 'bold'}]}>
-                                      🔒 Listă Confidențială (Clasa aparține altui antrenor)
+                                      🔒 Confidential List (Class belongs to another trainer)
                                     </Text>
                                 )}
                               </View>
@@ -645,7 +639,7 @@ export default function App() {
                       <View>
                         <Text style={styles.profileGlassName}>{currentUser.FullName}</Text>
                         <Text style={styles.profileGlassSubTag}>
-                          {currentUser.SubscriptionType && currentUser.SessionsLeftThisWeek > 0 ? `👑 VIP - ${currentUser.SubscriptionType}` : "⚠️ Fără Abonament Activ"}
+                          {currentUser.SubscriptionType && currentUser.SessionsLeftThisWeek > 0 ? `👑 VIP - ${currentUser.SubscriptionType}` : "⚠️ No Active Subscription"}
                         </Text>
                       </View>
                       <TouchableOpacity style={styles.profileUploadRealButton} onPress={handleOpenNativePhoneGallery}>
@@ -664,21 +658,21 @@ export default function App() {
                               currentUser.SessionsLeftThisWeek > 1000 ? "∞" : currentUser.SessionsLeftThisWeek
                           )}
                         </Text>
-                        <Text style={styles.profileStatLabel}>{isTrainer ? "Clase Create" : "Credite"}</Text>
+                        <Text style={styles.profileStatLabel}>{isTrainer ? "Classes Created" : "Credits"}</Text>
                       </View>
 
-                      {!isTrainer && currentUser.SubscriptionType && currentUser.SessionsLeftThisWeek > 0 && (
+                      {!isTrainer && currentUser.SubscriptionType && (
                           <View style={styles.profileStatsItemBox}>
-                            <Text style={[styles.profileStatNumber, {color: '#00E5FF'}]}>
+                            <Text style={[styles.profileStatNumber, { color: '#00E5FF', fontSize: 16 }]}>
                               {getZileRamase()}
                             </Text>
-                            <Text style={styles.profileStatLabel}>Valabilitate</Text>
+                            <Text style={styles.profileStatLabel}>Validity</Text>
                           </View>
                       )}
 
                       <View style={styles.profileStatsItemBox}>
-                        <Text style={styles.profileStatNumber}>{isTrainer ? 'Antrenor' : 'Membru'}</Text>
-                        <Text style={styles.profileStatLabel}>Rol Club</Text>
+                        <Text style={styles.profileStatNumber}>{isTrainer ? 'Trainer' : 'Member'}</Text>
+                        <Text style={styles.profileStatLabel}>Club Role</Text>
                       </View>
                     </View>
 
@@ -686,7 +680,7 @@ export default function App() {
                         <View>
                           {myBookedClasses.length > 0 && (
                               <View style={{marginBottom: 15}}>
-                                <Text style={styles.profileSectionInnerTitle}>Clasele Mele Active Programate 💕</Text>
+                                <Text style={styles.profileSectionInnerTitle}>My Active Classes 💕</Text>
                                 <ScrollView style={{maxHeight: 75}} showsVerticalScrollIndicator={false}>
                                   {myBookedClasses.map((c) => (
                                       <View key={c.Id} style={styles.profileClassListRowStrip}>
@@ -701,7 +695,7 @@ export default function App() {
                                 </ScrollView>
                               </View>
                           )}
-                          <Text style={styles.profileSectionInnerTitle}>Cumpără / Reînnoiește Abonament GlowGym 💳</Text>
+                          <Text style={styles.profileSectionInnerTitle}>Buy / Renew GlowGym Subscription 💳</Text>
                           <ScrollView horizontal showsHorizontalScrollIndicator={false}
                                       contentContainerStyle={{gap: 10, paddingVertical: 4}}>
                             {subscriptionTypesOptions.map((sub) => (
@@ -717,13 +711,13 @@ export default function App() {
                     ) : (
                         <View>
                           <Text style={styles.profileSectionInnerTitle}>
-                            {isTrainer ? "Clasele mele active publicate 🏋️‍♂️" : "Clasele Mele Active Programate 💕"}
+                            {isTrainer ? "My Published Active Classes ️" : "My Active Scheduled Classes "}
                           </Text>
                           <ScrollView style={{maxHeight: 110}} showsVerticalScrollIndicator={false}>
                             {isTrainer ? (
                                 myCreatedClasses.map((c) => (
                                     <View key={c.Id} style={styles.profileClassListRowStrip}>
-                                      <Text style={styles.profileStripSportName}>🏋️‍♂️ {c.SportType?.Name}</Text>
+                                      <Text style={styles.profileStripSportName}> {c.SportType?.Name}</Text>
                                       <Text
                                           style={styles.profileStripTime}>🕒 {new Date(c.StartTime).toLocaleDateString('ro-RO')} • {new Date(c.StartTime).toLocaleTimeString('ro-RO', {
                                         hour: '2-digit',
@@ -748,9 +742,6 @@ export default function App() {
                         </View>
                     )}
 
-                    <TouchableOpacity style={styles.profileInlineLogoutMinimalButton} onPress={handleLogout}>
-                      <Text style={styles.profileInlineLogoutMinimalText}>Secure Sign Out 🔒</Text>
-                    </TouchableOpacity>
                   </View>
                 </ImageBackground>
               </View>
@@ -807,22 +798,6 @@ export default function App() {
               </ScrollView>
           )}
 
-          {activeTab === 'scanQr' && currentUser.Role === 1 && (
-              <ScrollView contentContainerStyle={{paddingHorizontal: 16, paddingBottom: 110}}>
-                <View style={[styles.staffFormCard, {borderColor: '#FF1493'}]}>
-                  <Text style={[styles.staffCardTitle, {color: '#FF1493'}]}>QR Code Check-In ✨</Text>
-                  <TextInput placeholder="Paste Member Access Token"
-                             style={[styles.staffInput, {borderColor: 'rgba(255, 20, 147, 0.3)'}]}
-                             value={qrSimulatedToken} onChangeText={setQrSimulatedToken} autoCapitalize="none"
-                             placeholderTextColor="rgba(255,182,193,0.4)"/>
-                  <TouchableOpacity style={[styles.staffButton, {backgroundColor: '#FF1493'}]}
-                                    onPress={handleSimulateQrScan}>
-                    <Text style={[styles.staffButtonText, {color: '#fff'}]}>Verify Member Access 🌸</Text>
-                  </TouchableOpacity>
-                </View>
-              </ScrollView>
-          )}
-
           <View style={styles.bottomTabBar}>
             <TouchableOpacity style={[styles.tabItem, activeTab === 'home' ? styles.tabItemActive : null]}
                               onPress={() => setActiveTab('home')}>
@@ -844,12 +819,6 @@ export default function App() {
                     <Text
                         style={[styles.tabLabel, activeTab === 'createClass' ? styles.tabLabelActive : null]}>Create</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={[styles.tabItem, activeTab === 'scanQr' ? styles.tabItemActive : null]}
-                                    onPress={() => setActiveTab('scanQr')}>
-                    <Text style={styles.tabIcon}>✨</Text>
-                    <Text style={[styles.tabLabel, activeTab === 'scanQr' ? styles.tabLabelActive : null]}>Scan
-                      Access</Text>
-                  </TouchableOpacity>
                 </>
             )}
           </View>
@@ -865,7 +834,7 @@ export default function App() {
           <Animated.View style={[styles.headerOverlayContent, { opacity: textOpacity, transform: [{ translateY: textTranslateY }] }]}>
             <Text style={styles.logoTextStart}>GlowGym</Text>
             <View style={styles.swipeIndicator}>
-              <Text style={styles.swipeText}>Swipe Up to start 🌸</Text>
+              <Text style={styles.swipeText}>Swipe Up to start</Text>
               <Text style={styles.arrow}>︾</Text>
             </View>
           </Animated.View>
@@ -887,10 +856,10 @@ export default function App() {
             <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.keyboardView}>
               <View style={styles.glassCard}>
                 <Text style={styles.loginTitle}>
-                  {currentView === 'login' && 'Glow Account 💕'}
+                  {currentView === 'login' && 'Glow Account'}
                   {currentView === 'register' && 'Join the Club 🌸'}
-                  {currentView === 'confirmRegister' && 'Activate Account ✨'}
-                  {currentView === 'forgot' && 'Reset Password 🎀'}
+                  {currentView === 'confirmRegister' && 'Activate Account'}
+                  {currentView === 'forgot' && 'Reset Password'}
                   {currentView === 'verifyCode' && 'Enter Secure Code 🔑'}
                 </Text>
                 <View style={styles.form}>
@@ -914,7 +883,7 @@ export default function App() {
                   )}
                   {currentView === 'login' && (
                       <TouchableOpacity style={styles.forgotPasswordContainer} onPress={() => navigateToView('forgot')}>
-                        <Text style={styles.forgotPasswordText}>Forgot my Password 🎀</Text>
+                        <Text style={styles.forgotPasswordText}>Forgot my Password</Text>
                       </TouchableOpacity>
                   )}
                   {currentView === 'register' && (
@@ -925,11 +894,11 @@ export default function App() {
                   )}
                   <TouchableOpacity style={styles.mainButton} onPress={currentView === 'login' ? handleLogin : currentView === 'register' ? handleRequestRegister : currentView === 'confirmRegister' ? handleConfirmRegister : currentView === 'forgot' ? handleForgotPassword : handleVerifyAndReset}>
                     <Text style={styles.buttonText}>
-                      {currentView === 'login' && 'Login ✨'}
+                      {currentView === 'login' && 'Login'}
                       {currentView === 'register' && 'Sign up 🌸'}
-                      {currentView === 'confirmRegister' && 'Activate Account ✨'}
-                      {currentView === 'forgot' && 'Send Reset Code 💕'}
-                      {currentView === 'verifyCode' && 'Update Password 🎀'}
+                      {currentView === 'confirmRegister' && 'Activate Account'}
+                      {currentView === 'forgot' && 'Send Reset Code'}
+                      {currentView === 'verifyCode' && 'Update Password'}
                     </Text>
                   </TouchableOpacity>
                   <View style={styles.dividerContainer}>
@@ -940,10 +909,10 @@ export default function App() {
                   <TouchableOpacity style={styles.toggleLink} onPress={() => { if (currentView === 'forgot' || currentView === 'verifyCode' || currentView === 'confirmRegister') navigateToView('login'); else navigateToView(currentView === 'login' ? 'register' : 'login'); }}>
                     <Text style={styles.toggleText}>
                       {currentView === 'login' && "Don't have an account? Join us 🌸"}
-                      {currentView === 'register' && "Already have an account? Login 💕"}
-                      {currentView === 'confirmRegister' && "Back to Login ✨"}
-                      {currentView === 'forgot' && "Back to Login ✨"}
-                      {currentView === 'verifyCode' && "Back to Login ✨"}
+                      {currentView === 'register' && "Already have an account? Login "}
+                      {currentView === 'confirmRegister' && "Back to Login"}
+                      {currentView === 'forgot' && "Back to Login"}
+                      {currentView === 'verifyCode' && "Back to Login"}
                     </Text>
                   </TouchableOpacity>
                 </View>

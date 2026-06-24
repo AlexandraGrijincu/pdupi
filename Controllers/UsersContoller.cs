@@ -242,7 +242,7 @@ namespace Gym.Controllers
         private string GenerateJwtToken(User user)
         {
             var tokenHandler = new JwtSecurityTokenHandler();
-            var key = Encoding.ASCII.GetBytes("CheiaMeaSuperSecretaGlowGym2026!!!🌸");
+            var key = Encoding.ASCII.GetBytes("CheiaMeaSuperSecretaGlowGym2026!!!");
 
             var tokenDescriptor = new SecurityTokenDescriptor
             {
@@ -260,6 +260,7 @@ namespace Gym.Controllers
             return tokenHandler.WriteToken(token);
         }
 
+        //neimplementat inca
         [Authorize]
         [HttpPost("api/Users/ScanQR")]
         public async Task<IActionResult> ScanQrCode([FromBody] ScanQrDTO dto)
@@ -396,63 +397,53 @@ namespace Gym.Controllers
             }
         }
 
-        // 👑 ACTUALIZAT: Configurat cu matricea de credite lunare totale (4, 8, 12) + reset curat la 0
+
         [Authorize]
         [HttpPost("api/Users/BuySubscription")]
         public async Task<IActionResult> BuySubscription([FromBody] System.Text.Json.JsonElement body)
         {
             try
             {
-                // Validăm existența proprietăților pentru a evita erori de tip "Property not found"
                 if (!body.TryGetProperty("UserId", out var userIdProp) || !body.TryGetProperty("SubscriptionTypeId", out var subIdProp))
-                {
                     return BadRequest(new { error = "Invalid request payload." });
-                }
 
                 int userId = userIdProp.GetInt32();
                 int subscriptionId = subIdProp.GetInt32();
 
                 var user = await _context.Users.FindAsync(userId);
-                if (user == null)
-                    return NotFound(new { error = "Glow Member not found!" });
+                if (user == null) return NotFound(new { error = "Glow Member not found!" });
 
-                // Resetare abonament
+                // Resetare (dacă subscriptionId e 0)
                 if (subscriptionId == 0)
                 {
                     user.SubscriptionType = null;
                     user.SessionsLeftThisWeek = 0;
+                    user.SubscriptionExpiryDate = null; // Resetăm data
                     await _context.SaveChangesAsync();
                     return Ok(new { message = "Subscription fully cleared! 🔒" });
                 }
 
                 // Definire pachete
-                string typeName = "Glow Bronze 🌸";
-                int sessions = 4;
+                string typeName = subscriptionId switch
+                {
+                    2 => "Glow Silver 💖",
+                    3 => "Glow Gold ✨",
+                    4 => "Glow Diamond Unlimited 👑",
+                    _ => "Glow Bronze 🌸"
+                };
+                int sessions = subscriptionId switch { 2 => 8, 3 => 12, 4 => 9999, _ => 4 };
 
-                if (subscriptionId == 2) { typeName = "Glow Silver 💖"; sessions = 8; }
-                else if (subscriptionId == 3) { typeName = "Glow Gold ✨"; sessions = 12; }
-                else if (subscriptionId == 4) { typeName = "Glow Diamond Unlimited 👑"; sessions = 9999; }
-
-                // Actualizare utilizator
+                // ACTUALIZARE DIRECTĂ ÎN TABELUL USER
                 user.SubscriptionType = typeName;
                 user.SessionsLeftThisWeek = sessions;
+                user.SubscriptionExpiryDate = DateTime.UtcNow.AddDays(30); // 30 zile de azi
 
-                // Salvare abonament cu expirare fixă la 30 de zile
-                var newSub = new Subscription
-                {
-                    UserId = user.Id,
-                    Type = typeName,
-                    ExpiryDate = DateTime.UtcNow.AddDays(30), // Fix 30 de zile
-                    RemainingSessions = sessions
-                };
-
-                _context.Subscriptions.Add(newSub);
                 await _context.SaveChangesAsync();
 
                 return Ok(new
                 {
                     message = "Subscription activated successfully!",
-                    expiryDate = newSub.ExpiryDate,
+                    expiryDate = user.SubscriptionExpiryDate,
                     sessions = sessions
                 });
             }
@@ -471,7 +462,7 @@ namespace Gym.Controllers
                 int userId = body.GetProperty("UserId").GetInt32();
                 int classId = body.GetProperty("ClassId").GetInt32();
 
-                Console.WriteLine($"CNF: Membrul ID {userId} a achitat 35 RON pentru clasa {classId}");
+                Console.WriteLine($"CNF: Member ID {userId} has paid 35 RON for class {classId}");
                 return Ok(new { message = "Single token session paid successfully! 💳✨" });
             }
             catch (Exception ex)

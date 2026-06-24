@@ -16,6 +16,7 @@ namespace Gym.Controllers
     {
         public int ClassId { get; set; }
         public int MemberId { get; set; }
+        public bool IsPaidSeparately { get; set; }
     }
 
     [Authorize] // 🔒 SECURIZAT COMPLET: Toate rezervările, înscrierile și anulările sunt blocate fără token JWT!
@@ -113,7 +114,6 @@ namespace Gym.Controllers
 
             try
             {
-                // 1. Căutăm clasa și încărcăm rezervările curente
                 var gymClass = await _context.GymClasses
                     .Include(c => c.Bookings)
                     .FirstOrDefaultAsync(c => c.Id == dto.ClassId);
@@ -121,53 +121,54 @@ namespace Gym.Controllers
                 if (gymClass == null)
                     return BadRequest(new { error = "The selected fitness class does not exist!" });
 
-                // 2. Verificăm dacă mai sunt locuri libere folosind proprietatea calculată "AvailableSlots"
+                var user = await _context.Users.FindAsync(dto.MemberId);
+                if (user == null) return NotFound("User not found.");
+
+                // 🌟 LOGICA MODIFICATĂ: 
+                // Verificăm creditele DOAR dacă nu a plătit separat (dto.IsPaidSeparately == false)
+                bool isDiamond = user.SubscriptionType == "Glow Diamond Unlimited 👑";
+                bool hasCredits = user.SessionsLeftThisWeek != null && user.SessionsLeftThisWeek > 0;
+
+                if (!dto.IsPaidSeparately && !isDiamond && !hasCredits)
+                {
+                    return BadRequest(new { error = "You do not have enough credits! Please pay the 35 RON fee or renew your subscription. 🌸" });
+                }
+
                 if (gymClass.AvailableSlots <= 0)
                     return BadRequest(new { error = "Sorry, this class is completely full! ❌" });
 
-                // 3. Verificăm dacă membrul este deja înscris activ la această clasă
                 var alreadyBooked = await _context.Bookings
                     .AnyAsync(b => b.GymClassId == dto.ClassId && b.MemberId == dto.MemberId && b.Status == true);
 
                 if (alreadyBooked)
                     return BadRequest(new { error = "You have already booked a place for this class! 🌸" });
 
-                // 4. Extragere dinamică din Token-ul JWT (Dovadă pentru profesor)
-                var identityUser = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-                Console.WriteLine($"🌸 Înscriere aprobată prin JWT! Membrul logat cu ID {identityUser} rezervă un loc la Clasa ID {dto.ClassId}");
-
-                // 5. Creăm instanța nouă
                 var newBooking = new Booking
                 {
                     GymClassId = dto.ClassId,
                     MemberId = dto.MemberId,
-                    BookingDate = DateTime.UtcNow, // Standardizat UTC în baza de date
+                    BookingDate = DateTime.UtcNow,
                     Status = true
                 };
+
+                // Scădem credite doar dacă NU a plătit separat și NU e Diamond
+                if (!dto.IsPaidSeparately && !isDiamond)
+                {
+                    user.SessionsLeftThisWeek -= 1;
+                }
 
                 _context.Bookings.Add(newBooking);
                 await _context.SaveChangesAsync();
 
-                // Calculăm dinamic locurile rămase după salvare pentru feedback imediat pe telefon
-                int slotsLeft = gymClass.MaxParticipants - gymClass.Bookings.Count;
-
                 return Ok(new
                 {
                     message = "Place booked successfully! 💕",
-                    availableSlots = slotsLeft
+                    remainingSessions = user.SessionsLeftThisWeek
                 });
             }
             catch (Exception ex)
             {
-                // Săpăm adânc în interiorul DbUpdateException pentru a extrage eroarea reală din PostgreSQL
-                var innerMessage = ex.InnerException != null ? ex.InnerException.Message : ex.Message;
-
-                Console.WriteLine($"========================================");
-                Console.WriteLine($"❌ EROARE DETALIATĂ DETECTATĂ ÎN DB:");
-                Console.WriteLine(innerMessage);
-                Console.WriteLine($"========================================");
-
-                return StatusCode(500, new { error = innerMessage });
+                return StatusCode(500, new { error = ex.Message });
             }
         }
 
