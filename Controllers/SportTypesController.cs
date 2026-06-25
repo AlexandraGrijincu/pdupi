@@ -6,17 +6,18 @@ using Microsoft.AspNetCore.OData.Routing.Controllers;
 using Microsoft.AspNetCore.OData.Formatter;
 using System.Linq;
 using Microsoft.AspNetCore.Authorization; // 🌟 ADĂUGAT: Namespace-ul pentru securitate
-
+using Gym.Services;
 namespace Gym.Controllers
 {
     [Authorize] // 🔒 SECURIZAT COMPLET: Nimeni nu poate vedea sau crea tipuri de sport fără token JWT valid
     public class SportTypesController : ODataController
     {
         private readonly AppDbContext _context;
-
-        public SportTypesController(AppDbContext context)
+        private readonly ITenantService _tenantService;
+        public SportTypesController(AppDbContext context, ITenantService tenantService) // 2. Injectează
         {
             _context = context;
+            _tenantService = tenantService;
         }
 
         /// <summary>
@@ -49,7 +50,7 @@ namespace Gym.Controllers
         public IActionResult Post([FromBody] SportType sportType)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
-
+            sportType.CompanyId = _tenantService.GetCompanyId() ?? 0;
             _context.SportTypes.Add(sportType);
             _context.SaveChanges();
 

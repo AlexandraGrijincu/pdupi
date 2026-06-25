@@ -1,48 +1,54 @@
-using Gym.Models;
 using Gym.Data;
-using Microsoft.EntityFrameworkCore;
+using Gym.Models;
+using Gym.Services;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.OData;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using Microsoft.OData.ModelBuilder;
 using Serilog;
-using System.Text.Json.Serialization;
-// 🌟 Namespace-uri adăugate pentru validarea securizată a token-urilor JWT
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
 using System.Text;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// 1. Configurare Serilog pentru loguri detaliate
 Log.Logger = new LoggerConfiguration().WriteTo.Console().CreateLogger();
 builder.Host.UseSerilog();
 
+// 2. Conectare Bază de Date
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+// 3. CORS
 builder.Services.AddCors(options => {
     options.AddPolicy("AllowAll", p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
 });
 
-// 🌟 CONFIGURAREA SERVICIULUI DE AUTENTIFICARE JWT
-// Serverul decodează automat headerul "Authorization: Bearer <token>" primit de la telefon
-builder.Services.AddAuthentication(options =>
-{
+// 4. CONFIGURARE JWT - REPARATĂ PENTRU A EVITA EROAREA IDX10517
+builder.Services.AddAuthentication(options => {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
     options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
 })
-.AddJwtBearer(options =>
-{
+.AddJwtBearer(options => {
+    options.SaveToken = true;
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
-        // Folosește la bit aceeași cheie secretă setată în UsersController!
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes("CheiaMeaSuperSecretaGlowGym2026!!!🌸")),
+        // ACEASTĂ CHEIE TREBUIE SĂ FIE IDENTICĂ CU CEA DIN USERSCONTROLLER
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes("CheiaMeaSuperSecretaGlowGym202612345678")),
         ValidateIssuer = false,
         ValidateAudience = false,
+        ValidateLifetime = true,
         ClockSkew = TimeSpan.Zero
     };
+    // 🌟 FORȚĂM VALIDATORUL SĂ NU CEARĂ "kid" (Key ID)
+    options.SecurityTokenValidators.Clear();
+    options.SecurityTokenValidators.Add(new JwtSecurityTokenHandler());
 });
 
-// CONFIGURAREA MODELULUI ODATA PENTRU TABELE
+// 5. Configurare OData
 static Microsoft.OData.Edm.IEdmModel GetEdmModel()
 {
     var mb = new ODataConventionModelBuilder();
@@ -66,13 +72,16 @@ builder.Services.AddControllers()
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// 6. Servicii pentru Multi-tenancy
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ITenantService, TenantService>();
+
 var app = builder.Build();
 
 app.UseRouting();
 app.UseCors("AllowAll");
 
-// 🌟 ORDINE CRITICĂ .NET: Întâi citim cine ești (Authentication), apoi ce ai voie să faci (Authorization)
-app.UseAuthentication();
+app.UseAuthentication(); // 🌟 Foarte important să fie în această ordine
 app.UseAuthorization();
 
 app.MapControllers();

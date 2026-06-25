@@ -12,4 +12,7 @@ public class Booking
     public virtual User? Member { get; set; }
     public virtual GymClass? GymClass { get; set; }
 
+    public int? CompanyId { get; set; }
+    public Company? Company { get; set; }
+
 }

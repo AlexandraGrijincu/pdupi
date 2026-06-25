@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.AspNetCore.Authorization;
 using BCryptNet = BCrypt.Net.BCrypt;
+using Gym.Services;
 
 namespace Gym.Controllers
 {
@@ -29,6 +30,7 @@ namespace Gym.Controllers
         public string Password { get; set; } = string.Empty;
         public int Role { get; set; }
         public string Code { get; set; } = string.Empty;
+        public int CompanyId { get; set; }
     }
 
     public class LoginDTO
@@ -57,13 +59,14 @@ namespace Gym.Controllers
     public class UsersController : ODataController
     {
         private readonly AppDbContext _context;
-
+        private readonly ITenantService _tenantService;
         private static System.Collections.Concurrent.ConcurrentDictionary<string, string> _temporaryRegisterCodes =
             new System.Collections.Concurrent.ConcurrentDictionary<string, string>();
 
-        public UsersController(AppDbContext context)
+        public UsersController(AppDbContext context, ITenantService tenantService)
         {
             _context = context;
+            _tenantService = tenantService;
         }
 
         [Authorize]
@@ -83,7 +86,8 @@ namespace Gym.Controllers
             {
                 string emailKey = dto.Email.Trim().ToLower();
 
-                if (await _context.Users.AnyAsync(u => u.Email == emailKey))
+                // 🌟 AM ADĂUGAT IgnoreQueryFilters() aici pentru a vedea utilizatorul global
+                if (await _context.Users.IgnoreQueryFilters().AnyAsync(u => u.Email == emailKey))
                 {
                     return BadRequest(new { error = "This email is already registered!" });
                 }
@@ -101,14 +105,14 @@ namespace Gym.Controllers
                 var bodyBuilder = new BodyBuilder
                 {
                     HtmlBody = $@"
-                        <div style='font-family: Arial, sans-serif; padding: 20px; background-color: #0A0A12; color: #ffffff; text-align: center;'>
-                            <h2 style='color: #FF1493;'>GlowGym 🌸</h2>
-                            <p style='color: #ffffff; font-size: 16px;'>Welcome to GlowGym!</p>
-                            <p style='color: #ffffff;'>Use the 4-digit verification code below to activate your account:</p>
-                            <div style='display: inline-block; padding: 15px 30px; background-color: #FF1493; color: white; border-radius: 8px; font-size: 26px; font-weight: bold; letter-spacing: 5px; margin-top: 15px; margin-bottom: 15px;'>
-                                {verificationCode}
-                            </div>
-                        </div>"
+                <div style='font-family: Arial, sans-serif; padding: 20px; background-color: #0A0A12; color: #ffffff; text-align: center;'>
+                    <h2 style='color: #FF1493;'>GlowGym 🌸</h2>
+                    <p style='color: #ffffff; font-size: 16px;'>Welcome to GlowGym!</p>
+                    <p style='color: #ffffff;'>Use the 4-digit verification code below to activate your account:</p>
+                    <div style='display: inline-block; padding: 15px 30px; background-color: #FF1493; color: white; border-radius: 8px; font-size: 26px; font-weight: bold; letter-spacing: 5px; margin-top: 15px; margin-bottom: 15px;'>
+                        {verificationCode}
+                    </div>
+                </div>"
                 };
                 emailMessage.Body = bodyBuilder.ToMessageBody();
 
@@ -127,6 +131,13 @@ namespace Gym.Controllers
             {
                 return StatusCode(500, new { error = "Internal server error mail client: " + ex.Message });
             }
+        }
+
+        [HttpGet("api/Companies/get-companies")]
+        public async Task<IActionResult> GetCompanies()
+        {
+            var companies = await _context.Companies.IgnoreQueryFilters().ToListAsync();
+            return Ok(companies);
         }
 
         [HttpPost("api/Users/Register")]
@@ -149,10 +160,8 @@ namespace Gym.Controllers
                     return BadRequest(new { error = "Invalid verification code! Please check your email. 🌸" });
                 }
 
-                if (await _context.Users.AnyAsync(u => u.Email == emailKey))
-                {
-                    return BadRequest(new { error = "This email was already registered while verifying!" });
-                }
+                if (await _context.Users.IgnoreQueryFilters().AnyAsync(u => u.Email == emailKey))
+                    return BadRequest(new { error = "Email already registered." });
 
                 string hashedPassword = BCryptNet.HashPassword(dto.Password);
 
@@ -162,6 +171,7 @@ namespace Gym.Controllers
                     Email = emailKey,
                     Password = hashedPassword,
                     Role = (UserRole)dto.Role,
+                    CompanyId = dto.CompanyId,
                     AccessToken = "QR_" + Guid.NewGuid().ToString().Substring(0, 5).ToUpper(),
                     ProfileImage = null,
                     SubscriptionType = null,
@@ -184,80 +194,62 @@ namespace Gym.Controllers
         [HttpPost("api/Users/Login")]
         public async Task<IActionResult> LoginUser([FromBody] LoginDTO dto)
         {
-            // 1. Verificare date primite
             if (dto == null || string.IsNullOrEmpty(dto.Email) || string.IsNullOrEmpty(dto.Password))
                 return BadRequest(new { error = "Email and password are required!" });
 
-            // 2. Căutare utilizator
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == dto.Email.Trim().ToLower());
-            if (user == null)
-                return BadRequest(new { error = "Invalid email or password. ✨" });
+            // Căutăm user-ul global (fără filtre de tenant)
+            var user = await _context.Users
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(u => u.Email == dto.Email.Trim().ToLower());
 
-            // 3. Verificare parolă
+            // Verificăm dacă există ȘI dacă parola e corectă (folosind un try-catch sigur)
             bool isPasswordValid = false;
-            try
+            if (user != null)
             {
-                isPasswordValid = BCryptNet.Verify(dto.Password, user.Password);
-            }
-            catch (Exception)
-            {
-                isPasswordValid = false;
+                try { isPasswordValid = BCryptNet.Verify(dto.Password, user.Password); }
+                catch { isPasswordValid = false; }
             }
 
-            if (!isPasswordValid)
+            if (user == null || !isPasswordValid)
                 return BadRequest(new { error = "Invalid email or password. ✨" });
 
-            // 4. Preluare dată expirare abonament
-            // Căutăm cel mai recent abonament activ al utilizatorului
+            // Preluăm abonamentul (tot cu IgnoreQueryFilters)
             var latestSub = await _context.Subscriptions
+                .IgnoreQueryFilters()
                 .Where(s => s.UserId == user.Id)
                 .OrderByDescending(s => s.ExpiryDate)
                 .FirstOrDefaultAsync();
 
-            // 5. Generare Token și actualizare AccessToken
             string jwtToken = GenerateJwtToken(user);
             user.AccessToken = jwtToken;
             await _context.SaveChangesAsync();
 
-            // 6. Returnare răspuns cu ExpiryDate inclus
             return Ok(new
             {
                 Token = jwtToken,
-                value = new[] {
-            new {
-                user.Id,
-                user.Email,
-                user.FullName,
-                user.Role,
-                user.ProfileImage,
-                user.SubscriptionType,
-                user.SessionsLeftThisWeek,
-                ExpiryDate = latestSub?.ExpiryDate, // <--- Data extrasă din Subscriptions
-                Token = jwtToken
-            }
-        }
+                value = new[] { new {
+            user.Id, user.Email, user.FullName, user.Role,
+            user.ProfileImage, user.SubscriptionType,
+            user.SessionsLeftThisWeek,
+            ExpiryDate = latestSub?.ExpiryDate,
+            Token = jwtToken
+        }}
             });
         }
-
         private string GenerateJwtToken(User user)
         {
             var tokenHandler = new JwtSecurityTokenHandler();
-            var key = Encoding.ASCII.GetBytes("CheiaMeaSuperSecretaGlowGym2026!!!");
-
+            var key = Encoding.ASCII.GetBytes("CheiaMeaSuperSecretaGlowGym202612345678");
             var tokenDescriptor = new SecurityTokenDescriptor
             {
-                Subject = new ClaimsIdentity(new[]
-                {
+                Subject = new ClaimsIdentity(new[] {
                     new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-                    new Claim(ClaimTypes.Email, user.Email),
-                    new Claim(ClaimTypes.Role, user.Role.ToString())
+                    new Claim("CompanyId", user.CompanyId.ToString()) // 🌟 Obligatoriu pentru Tenant
                 }),
                 Expires = DateTime.UtcNow.AddDays(7),
                 SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
             };
-
-            var token = tokenHandler.CreateToken(tokenDescriptor);
-            return tokenHandler.WriteToken(token);
+            return tokenHandler.WriteToken(tokenHandler.CreateToken(tokenDescriptor));
         }
 
         //neimplementat inca
@@ -297,9 +289,14 @@ namespace Gym.Controllers
 
             try
             {
-                var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == dto.Email.Trim().ToLower());
+                // 🌟 MODIFICAT: Am adăugat IgnoreQueryFilters() pentru a găsi utilizatorul
+                var user = await _context.Users
+                    .IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(u => u.Email == dto.Email.Trim().ToLower());
+
                 if (user == null)
                 {
+                    // Returnăm OK chiar dacă nu există, pentru securitate (să nu afle cineva ce email-uri există)
                     return Ok(new { message = "If this email is registered, you will receive a reset code shortly." });
                 }
 
@@ -317,14 +314,14 @@ namespace Gym.Controllers
                 var bodyBuilder = new BodyBuilder
                 {
                     HtmlBody = $@"
-                        <div style='font-family: Arial, sans-serif; padding: 20px; background-color: #0A0A12; color: #ffffff; text-align: center;'>
-                            <h2 style='color: #FF1493;'>GlowGym 🌸</h2>
-                            <p style='color: #ffffff; font-size: 16px;'>Hello, {user.FullName}!</p>
-                            <p style='color: #ffffff;'>Use the 4-digit code below inside the app to reset your password:</p>
-                            <div style='display: inline-block; padding: 15px 30px; background-color: #FF1493; color: white; border-radius: 8px; font-size: 26px; font-weight: bold; letter-spacing: 5px; margin-top: 15px; margin-bottom: 15px;'>
-                                {resetCode}
-                            </div>
-                        </div>"
+                <div style='font-family: Arial, sans-serif; padding: 20px; background-color: #0A0A12; color: #ffffff; text-align: center;'>
+                    <h2 style='color: #FF1493;'>GlowGym 🌸</h2>
+                    <p style='color: #ffffff; font-size: 16px;'>Hello, {user.FullName}!</p>
+                    <p style='color: #ffffff;'>Use the 4-digit code below inside the app to reset your password:</p>
+                    <div style='display: inline-block; padding: 15px 30px; background-color: #FF1493; color: white; border-radius: 8px; font-size: 26px; font-weight: bold; letter-spacing: 5px; margin-top: 15px; margin-bottom: 15px;'>
+                        {resetCode}
+                    </div>
+                </div>"
                 };
                 emailMessage.Body = bodyBuilder.ToMessageBody();
 
@@ -338,9 +335,10 @@ namespace Gym.Controllers
 
                 return Ok(new { message = "Reset code sent successfully!" });
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                return StatusCode(500, new { error = "Internal server error mail client" });
+                // 🌟 Am adăugat ex.Message pentru a vedea eroarea dacă mail-ul tot nu pleacă
+                return StatusCode(500, new { error = "Internal server error mail client: " + ex.Message });
             }
         }
 
@@ -352,7 +350,12 @@ namespace Gym.Controllers
 
             try
             {
-                var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == dto.Email.Trim().ToLower());
+                // 🌟 CRITIC: Adăugăm IgnoreQueryFilters() și aici, altfel user-ul e "invizibil" 
+                // pentru că nu ești logat când resetezi parola!
+                var user = await _context.Users
+                    .IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(u => u.Email == dto.Email.Trim().ToLower());
+
                 if (user == null)
                     return BadRequest(new { error = "User not found!" });
 
@@ -364,13 +367,15 @@ namespace Gym.Controllers
 
                 user.Password = BCryptNet.HashPassword(dto.NewPassword);
                 user.AccessToken = "QR_" + Guid.NewGuid().ToString().Substring(0, 5).ToUpper();
+
+                // SaveChanges va funcționa pentru că am extras user-ul deja cu IgnoreQueryFilters
                 await _context.SaveChangesAsync();
 
                 return Ok(new { message = "Password updated successfully!" });
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                return StatusCode(500, new { error = "Database error" });
+                return StatusCode(500, new { error = "Database error: " + ex.Message });
             }
         }
 

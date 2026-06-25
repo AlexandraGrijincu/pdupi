@@ -12,5 +12,6 @@ public class SportType
     // Navigation Property: Aceasta este "perechea" pentru proprietatea SportType din GymClass
     public virtual ICollection<GymClass> GymClasses { get; set; } = new List<GymClass>();
 
-   
+    public int? CompanyId { get; set; }
+    public Company? Company { get; set; }
 }

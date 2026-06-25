@@ -39,6 +39,8 @@ namespace Gym.Models
         [JsonIgnore]
         public virtual ICollection<Subscription>? Subscriptions { get; set; } = new List<Subscription>();
 
-      
+        public int? CompanyId { get; set; }
+        public Company? Company { get; set; }
+
     }
 }

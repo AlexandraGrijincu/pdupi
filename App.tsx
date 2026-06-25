@@ -131,7 +131,8 @@ export default function App() {
   const headerHeight = scrollY.interpolate({ inputRange: [0, SCROLL_DISTANCE], outputRange: [HEADER_MAX_HEIGHT, HEADER_MIN_HEIGHT], extrapolate: 'clamp' });
   const textOpacity = scrollY.interpolate({ inputRange: [0, SCROLL_DISTANCE / 2], outputRange: [1, 0], extrapolate: 'clamp' });
   const textTranslateY = scrollY.interpolate({ inputRange: [0, SCROLL_DISTANCE], outputRange: [0, -100], extrapolate: 'clamp' });
-
+  const [companies, setCompanies] = useState<any[]>([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
   const navigateToView = (view: 'login' | 'register' | 'confirmRegister' | 'forgot' | 'verifyCode') => {
     setEmail(''); setPassword(''); setFullName(''); setInviteCode(''); setStaffError('');
     setResetCode(''); setNewPassword(''); setRegisterVerifyCode(''); setShowPassword(false); setShowNewPassword(false);
@@ -154,6 +155,15 @@ export default function App() {
     }
   }, [isLoggedIn, currentUser]);
 
+
+  useEffect(() => {
+    if (currentView === 'register') {
+      fetch(`${API_URLS.LOGIN.split('/api')[0]}/api/Companies/get-companies`)
+          .then(res => res.json())
+          .then(data => setCompanies(data))
+          .catch(err => console.log("Eroare lista companii:", err));
+    }
+  }, [currentView]);
   const loadDashboardData = async () => {
     await fetchGymClasses();
     await fetchAllBookingsDirect();
@@ -222,6 +232,7 @@ export default function App() {
   const handleRequestRegister = async () => {
     setStaffError('');
     if (!email || !password || !fullName) { Alert.alert("Glow Info 🌸", "Fill in all fields!"); return; }
+    if (!selectedCompanyId) { Alert.alert("Selection 🌸", "Please select a gym!"); return; }
     if (!isValidEmail(email)) { Alert.alert("Glow Info 🌸", "Enter a valid address!"); return; }
     if (inviteCode.trim() !== "" && inviteCode.trim() !== "GLOW_STAFF_2026") { setStaffError("The code is incorrect! 🌸"); return; }
     try {
@@ -231,12 +242,46 @@ export default function App() {
   };
 
   const handleConfirmRegister = async () => {
-    if (!registerVerifyCode) return;
+    if (!registerVerifyCode) {
+      Alert.alert("Glow Info 🌸", "Please enter the verification code!");
+      return;
+    }
+
+    // Verificăm dacă a selectat o companie
+    if (!selectedCompanyId) {
+      Alert.alert("Glow Info 🌸", "Please select your gym location!");
+      return;
+    }
+
     let assignedRole = inviteCode.trim() === "GLOW_STAFF_2026" ? 1 : 0;
+
     try {
-      const response = await fetch(API_URLS.REGISTER, { method: 'POST', headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ FullName: fullName.trim(), Email: email.trim().toLowerCase(), Password: password, Role: assignedRole, Code: registerVerifyCode.trim() }) });
-      if (response.ok) { Alert.alert("Welcome! 🌸", "Account ready!"); navigateToView('login'); }
-    } catch (e: any) { Alert.alert("Glow Info 🎀", "Registration failed."); }
+      const response = await fetch(API_URLS.REGISTER, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          FullName: fullName.trim(),
+          Email: email.trim().toLowerCase(),
+          Password: password,
+          Role: assignedRole,
+          Code: registerVerifyCode.trim(),
+          CompanyId: parseInt(selectedCompanyId) // <--- ADĂUGAT AICI
+        })
+      });
+
+      if (response.ok) {
+        Alert.alert("Welcome! 🌸", "Account ready!");
+        navigateToView('login');
+      } else {
+        const errorData = await response.json();
+        Alert.alert("Registration Error", errorData.error || "Failed to register.");
+      }
+    } catch (e: any) {
+      Alert.alert("Glow Info 🎀", "Registration failed. Check your connection.");
+    }
   };
 
   const handleForgotPassword = async () => {
@@ -888,7 +933,33 @@ export default function App() {
                   )}
                   {currentView === 'register' && (
                       <View>
-                        <TextInput placeholder="Staff Code (Optional)" style={[styles.input, staffError ? styles.inputError : null]} onChangeText={(text) => { setInviteCode(text); setStaffError(''); }} placeholderTextColor="rgba(255, 182, 193, 0.4)" autoCapitalize="none" value={inviteCode} />
+                        {/* Adăugăm selecția de companii aici */}
+                        <Text style={{ color: '#FFB6C1', marginBottom: 5, marginTop: 10, textAlign: 'center' }}>Select your Gym:</Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 15 }}>
+                          {companies.map((comp) => (
+                              <TouchableOpacity
+                                  key={comp.Id}
+                                  style={[
+                                    styles.input,
+                                    { width: 150, marginRight: 10, justifyContent: 'center' },
+                                    selectedCompanyId === comp.Id.toString() && { borderColor: '#FF1493', borderWidth: 2, backgroundColor: 'rgba(255, 20, 147, 0.2)' }
+                                  ]}
+                                  onPress={() => setSelectedCompanyId(comp.Id.toString())}
+                              >
+                                <Text style={{ color: '#fff', textAlign: 'center' }}>{comp.Name}</Text>
+                              </TouchableOpacity>
+                          ))}
+                        </ScrollView>
+
+                        {/* Câmpul tău existent */}
+                        <TextInput
+                            placeholder="Staff Code (Optional)"
+                            style={[styles.input, staffError ? styles.inputError : null]}
+                            onChangeText={(text) => { setInviteCode(text); setStaffError(''); }}
+                            placeholderTextColor="rgba(255, 182, 193, 0.4)"
+                            autoCapitalize="none"
+                            value={inviteCode}
+                        />
                         {staffError ? <Text style={styles.errorText}>{staffError}</Text> : null}
                       </View>
                   )}

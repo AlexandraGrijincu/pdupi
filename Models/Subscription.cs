@@ -29,6 +29,8 @@ namespace Gym.Models
         [NotMapped]
         public bool IsActive => ExpiryDate > DateTime.UtcNow && RemainingSessions > 0;
 
-      
+
+        public int? CompanyId { get; set; }
+        public Company? Company { get; set; }
     }
 }

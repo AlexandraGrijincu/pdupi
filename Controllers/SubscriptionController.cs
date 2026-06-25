@@ -6,17 +6,18 @@ using Microsoft.AspNetCore.OData.Routing.Controllers;
 using Microsoft.AspNetCore.OData.Formatter;
 using System.Linq;
 using Microsoft.AspNetCore.Authorization;
-
+using Gym.Services;
 namespace Gym.Controllers
 {
     [Authorize] // 🔒 SECURIZAT PRIN JWT VIA CONTROL GLOBAL
     public class SubscriptionsController : ODataController
     {
         private readonly AppDbContext _context;
-
-        public SubscriptionsController(AppDbContext context)
+        private readonly ITenantService _tenantService;
+        public SubscriptionsController(AppDbContext context, ITenantService tenantService) // 2. Injectează
         {
             _context = context;
+            _tenantService = tenantService;
         }
 
         /// <summary>
@@ -55,7 +56,7 @@ namespace Gym.Controllers
 
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
-
+            subscription.CompanyId = _tenantService.GetCompanyId() ?? 0;
             _context.Subscriptions.Add(subscription);
             _context.SaveChanges();
 

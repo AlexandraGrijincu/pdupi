@@ -9,6 +9,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
+using Gym.Services;
 
 namespace Gym.Controllers
 {
@@ -23,10 +24,12 @@ namespace Gym.Controllers
     public class BookingsController : ODataController
     {
         private readonly AppDbContext _context;
+        private readonly ITenantService _tenantService;
 
-        public BookingsController(AppDbContext context)
+        public BookingsController(AppDbContext context, ITenantService tenantService)
         {
             _context = context;
+            _tenantService = tenantService;
         }
 
         /// <summary>
@@ -95,6 +98,7 @@ namespace Gym.Controllers
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
             booking.BookingDate = DateTime.UtcNow; // Salvăm data rezervării în standardul global UTC
+            booking.CompanyId = _tenantService.GetCompanyId() ?? 0;
 
             _context.Bookings.Add(booking);
             _context.SaveChanges();
@@ -148,7 +152,8 @@ namespace Gym.Controllers
                     GymClassId = dto.ClassId,
                     MemberId = dto.MemberId,
                     BookingDate = DateTime.UtcNow,
-                    Status = true
+                    Status = true,
+                    CompanyId = _tenantService.GetCompanyId() ?? 0
                 };
 
                 // Scădem credite doar dacă NU a plătit separat și NU e Diamond

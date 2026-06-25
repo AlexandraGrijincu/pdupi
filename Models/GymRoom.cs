@@ -9,5 +9,6 @@ public class GymRoom
     // Clasele care au loc în această sală
     public virtual ICollection<GymClass> Classes { get; set; } = new List<GymClass>();
 
-   
+    public int? CompanyId { get; set; }
+    public Company? Company { get; set; }
 }

@@ -9,6 +9,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
+using Gym.Services;
 
 namespace Gym.Controllers
 {
@@ -26,10 +27,11 @@ namespace Gym.Controllers
     public class GymClassesController : ODataController
     {
         private readonly AppDbContext _context;
-
-        public GymClassesController(AppDbContext context)
+        private readonly ITenantService _tenantService;
+        public GymClassesController(AppDbContext context, ITenantService tenantService) // 3. Injectează
         {
             _context = context;
+            _tenantService = tenantService;
         }
 
         /// <summary>
@@ -119,7 +121,8 @@ namespace Gym.Controllers
                     SportTypeId = sport.Id,
                     StartTime = parsedStartTimeUtc, // 🔒 Salvat în standardul normal UTC în DB
                     EndTime = parsedStartTimeUtc.AddMinutes(dto.Duration),
-                    MaxParticipants = dto.MaxParticipants
+                    MaxParticipants = dto.MaxParticipants,
+                    CompanyId = _tenantService.GetCompanyId() ?? 0
                 };
 
                 _context.GymClasses.Add(gymClass);

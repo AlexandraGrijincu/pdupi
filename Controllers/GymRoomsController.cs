@@ -6,17 +6,18 @@ using Microsoft.AspNetCore.OData.Routing.Controllers;
 using Microsoft.AspNetCore.OData.Formatter;
 using System.Linq;
 using Microsoft.AspNetCore.Authorization; // 🌟 ADĂUGAT: Namespace-ul pentru securitate
-
+using Gym.Services;
 namespace Gym.Controllers
 {
     [Authorize] // 🔒 SECURIZAT COMPLET: Doar utilizatorii logați pot citi sau modifica sălile de sport
     public class GymRoomsController : ODataController
     {
         private readonly AppDbContext _context;
-
-        public GymRoomsController(AppDbContext context)
+        private readonly ITenantService _tenantService;
+        public GymRoomsController(AppDbContext context, ITenantService tenantService)
         {
             _context = context;
+            _tenantService = tenantService;
         }
 
         /// <summary>
@@ -49,7 +50,7 @@ namespace Gym.Controllers
         public IActionResult Post([FromBody] GymRoom room)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
-
+            room.CompanyId = _tenantService.GetCompanyId() ?? 0;
             _context.GymRooms.Add(room);
             _context.SaveChanges();
 
